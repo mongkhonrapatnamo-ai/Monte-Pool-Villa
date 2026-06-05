@@ -107,7 +107,8 @@ def add_home():
     try:
         data = request.json
         ws = get_sheet('data')
-        row = _home_to_row(data)
+        headers = ws.row_values(1)
+        row = [str(data.get(h, '')) for h in headers]
         ws.append_row(row)
         return jsonify({'success': True})
     except Exception as e:
@@ -119,11 +120,10 @@ def update_home(row_index):
     try:
         data = request.json
         ws = get_sheet('data')
-        row = _home_to_row(data)
-        # row_index เริ่มที่ 0 = แถวข้อมูลแรก (แถว 2 ใน sheet เพราะแถว 1 = header)
+        headers = ws.row_values(1)
         sheet_row = row_index + 2
-        for col_idx, val in enumerate(row, start=1):
-            ws.update_cell(sheet_row, col_idx, val)
+        for col_idx, h in enumerate(headers, start=1):
+            ws.update_cell(sheet_row, col_idx, str(data.get(h, '')))
         return jsonify({'success': True})
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)}), 500
@@ -133,24 +133,10 @@ def update_home(row_index):
 def delete_home(row_index):
     try:
         ws = get_sheet('data')
-        sheet_row = row_index + 2
-        ws.delete_rows(sheet_row)
+        ws.delete_rows(row_index + 2)
         return jsonify({'success': True})
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)}), 500
-
-def _home_to_row(data):
-    row = [
-        data.get('ชื่อที่พัก', ''),
-        data.get('พักสูงสุด กี่ คน', ''),
-        data.get('กี่ห้องนอน', ''),
-        data.get('กี่ห้องน้ำ', ''),
-        data.get('ราคา แรก', ''),
-        data.get('ราคา สอง', ''),
-    ]
-    for i in range(1, 11):
-        row.append(data.get(f'รูป {i}', ''))
-    return row
 
 # ===== Generic Sheet API (promotions, reviews) =====
 @app.route('/api/sheet/<sheet_name>', methods=['GET'])
