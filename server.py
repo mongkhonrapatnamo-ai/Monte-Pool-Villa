@@ -7,7 +7,9 @@ Deploy: gunicorn server:app
 
 import os
 import json
+import secrets
 import gspread
+from datetime import datetime
 from flask import Flask, request, jsonify, session, send_from_directory
 from flask_cors import CORS
 from google.oauth2.service_account import Credentials
@@ -181,6 +183,76 @@ def delete_sheet_row(sheet_name, row_index):
     try:
         ws = get_sheet(sheet_name)
         ws.delete_rows(row_index + 2)
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+# ===== Reviews API (public submit, token-based edit/delete) =====
+@app.route('/api/reviews', methods=['POST'])
+def add_review():
+    """Public — ใครก็ส่งรีวิวได้ ไม่ต้อง login"""
+    try:
+        data = request.json or {}
+        ws = get_sheet('รีวิว')
+        headers = ws.row_values(1)
+        token = secrets.token_urlsafe(16)
+        today = datetime.now().strftime('%d/%m/%Y')
+        row_data = {}
+        for h in headers:
+            if h == 'token':
+                row_data[h] = token
+            elif 'วันที่' in h:
+                row_data[h] = today
+            else:
+                row_data[h] = str(data.get(h, ''))
+        ws.append_row([row_data.get(h, '') for h in headers])
+        return jsonify({'success': True, 'token': token})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+@app.route('/api/reviews/<int:row_index>', methods=['PUT'])
+def update_review(row_index):
+    """แก้ไขรีวิว — ต้องมี token เจ้าของ หรือ admin session"""
+    try:
+        data = request.json or {}
+        token = data.get('token', '')
+        is_admin = session.get('logged_in', False)
+        ws = get_sheet('รีวิว')
+        headers = ws.row_values(1)
+        sheet_row = row_index + 2
+        if not is_admin:
+            if 'token' not in headers:
+                return jsonify({'success': False, 'message': 'ไม่พบคอลัมน์ token'}), 403
+            stored = ws.cell(sheet_row, headers.index('token') + 1).value
+            if stored != token:
+                return jsonify({'success': False, 'message': 'ไม่มีสิทธิ์แก้ไขรีวิวนี้'}), 403
+        for col_idx, h in enumerate(headers, start=1):
+            if h not in ('token', 'วันที่') and h in data:
+                ws.update_cell(sheet_row, col_idx, str(data.get(h, '')))
+        # อัพเดทคะแนนด้วย (เพราะ filter ต้องการ)
+        if 'คะแนน รีวิว' in headers and 'คะแนน รีวิว' in data:
+            ws.update_cell(sheet_row, headers.index('คะแนน รีวิว') + 1, str(data['คะแนน รีวิว']))
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+@app.route('/api/reviews/<int:row_index>', methods=['DELETE'])
+def delete_review(row_index):
+    """ลบรีวิว — ต้องมี token เจ้าของ หรือ admin session"""
+    try:
+        data = request.get_json(force=True, silent=True) or {}
+        token = data.get('token', '')
+        is_admin = session.get('logged_in', False)
+        ws = get_sheet('รีวิว')
+        headers = ws.row_values(1)
+        sheet_row = row_index + 2
+        if not is_admin:
+            if 'token' not in headers:
+                return jsonify({'success': False, 'message': 'ไม่พบคอลัมน์ token'}), 403
+            stored = ws.cell(sheet_row, headers.index('token') + 1).value
+            if stored != token:
+                return jsonify({'success': False, 'message': 'ไม่มีสิทธิ์ลบรีวิวนี้'}), 403
+        ws.delete_rows(sheet_row)
         return jsonify({'success': True})
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)}), 500
