@@ -98,8 +98,9 @@ def check_auth():
 def get_homes():
     try:
         ws = get_sheet('data')
+        headers = ws.row_values(1)
         records = ws.get_all_records()
-        return jsonify({'success': True, 'data': records})
+        return jsonify({'success': True, 'data': records, 'headers': headers})
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)}), 500
 
@@ -145,8 +146,9 @@ def delete_home(row_index):
 def get_sheet_data(sheet_name):
     try:
         ws = get_sheet(sheet_name)
+        headers = ws.row_values(1)
         records = ws.get_all_records()
-        return jsonify({'success': True, 'data': records})
+        return jsonify({'success': True, 'data': records, 'headers': headers})
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)}), 500
 
@@ -193,7 +195,7 @@ def add_review():
     """Public — ใครก็ส่งรีวิวได้ ไม่ต้อง login"""
     try:
         data = request.json or {}
-        ws = get_sheet('รีวิว')
+        ws = get_sheet('review')
         headers = ws.row_values(1)
         token = secrets.token_urlsafe(16)
         today = datetime.now().strftime('%d/%m/%Y')
@@ -201,7 +203,7 @@ def add_review():
         for h in headers:
             if h == 'token':
                 row_data[h] = token
-            elif 'วันที่' in h:
+            elif h == 'Date':
                 row_data[h] = today
             else:
                 row_data[h] = str(data.get(h, ''))
@@ -217,7 +219,7 @@ def update_review(row_index):
         data = request.json or {}
         token = data.get('token', '')
         is_admin = session.get('logged_in', False)
-        ws = get_sheet('รีวิว')
+        ws = get_sheet('review')
         headers = ws.row_values(1)
         sheet_row = row_index + 2
         if not is_admin:
@@ -243,7 +245,7 @@ def delete_review(row_index):
         data = request.get_json(force=True, silent=True) or {}
         token = data.get('token', '')
         is_admin = session.get('logged_in', False)
-        ws = get_sheet('รีวิว')
+        ws = get_sheet('review')
         headers = ws.row_values(1)
         sheet_row = row_index + 2
         if not is_admin:
