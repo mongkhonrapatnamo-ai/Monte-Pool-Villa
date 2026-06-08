@@ -229,11 +229,8 @@ def update_review(row_index):
             if stored != token:
                 return jsonify({'success': False, 'message': 'ไม่มีสิทธิ์แก้ไขรีวิวนี้'}), 403
         for col_idx, h in enumerate(headers, start=1):
-            if h not in ('token', 'วันที่') and h in data:
+            if h not in ('token', 'Date') and h in data:
                 ws.update_cell(sheet_row, col_idx, str(data.get(h, '')))
-        # อัพเดทคะแนนด้วย (เพราะ filter ต้องการ)
-        if 'คะแนน รีวิว' in headers and 'คะแนน รีวิว' in data:
-            ws.update_cell(sheet_row, headers.index('คะแนน รีวิว') + 1, str(data['คะแนน รีวิว']))
         return jsonify({'success': True})
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)}), 500
