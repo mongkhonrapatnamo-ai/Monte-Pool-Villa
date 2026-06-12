@@ -22,15 +22,9 @@ app.secret_key = os.environ.get('SECRET_KEY', 'monte-villa-secret-key-2026')
 # ===== CORS (อนุญาต Netlify เรียก API) =====
 FRONTEND_URL = os.environ.get('FRONTEND_URL', 'http://localhost:8000')
 import re as _re
-_NETLIFY_RE = _re.compile(r'https://[a-zA-Z0-9\-]+\.netlify\.app')
-
-def _origin_allowed(origin):
-    if not origin: return False
-    if origin in [FRONTEND_URL, 'http://localhost:8000', 'http://127.0.0.1:8000']:
-        return True
-    return bool(_NETLIFY_RE.fullmatch(origin))
-
-CORS(app, supports_credentials=True, origins=_origin_allowed)
+# รองรับทุก *.netlify.app และ localhost
+_CORS_ORIGINS = _re.compile(r'https://[a-zA-Z0-9\-]+\.netlify\.app|http://localhost:\d+|http://127\.0\.0\.1:\d+')
+CORS(app, supports_credentials=True, origins=_CORS_ORIGINS)
 
 # Session cookie ข้ามโดเมน
 app.config['SESSION_COOKIE_SAMESITE'] = 'None'
