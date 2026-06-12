@@ -189,6 +189,26 @@ def delete_sheet_row(sheet_name, row_index):
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)}), 500
 
+# ===== Promote API (public contact form) =====
+@app.route('/api/promote', methods=['POST'])
+def submit_promote():
+    """Public — ใครก็ส่งฟอร์มติดต่อได้ ไม่ต้อง login"""
+    try:
+        data = request.json or {}
+        ws = get_sheet('promote')
+        headers = ws.row_values(1)
+        today = datetime.now().strftime('%d/%m/%Y %H:%M')
+        row = []
+        for h in headers:
+            if h == 'Date':
+                row.append(today)
+            else:
+                row.append(str(data.get(h, '')))
+        ws.append_row(row)
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+
 # ===== Reviews API (public submit, token-based edit/delete) =====
 @app.route('/api/reviews', methods=['POST'])
 def add_review():
