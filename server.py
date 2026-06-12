@@ -276,6 +276,129 @@ def delete_review(row_index):
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)}), 500
 
+# ===== Google Drive helper =====
+def get_drive_service():
+    from googleapiclient.discovery import build
+    creds_json = os.environ.get('GOOGLE_CREDENTIALS')
+    if creds_json:
+        info = json.loads(creds_json)
+        creds = service_account.Credentials.from_service_account_info(info, scopes=SCOPES)
+    else:
+        creds_file = os.path.join(os.path.dirname(__file__), 'credentials.json')
+        creds = service_account.Credentials.from_service_account_file(creds_file, scopes=SCOPES)
+    return build('drive', 'v3', credentials=creds)
+
+# ===== Upload Image to Google Drive (admin only) =====
+@app.route('/api/upload-image', methods=['POST'])
+@login_required
+def upload_image():
+    if 'file' not in request.files:
+        return jsonify({'success': False, 'message': 'ไม่พบไฟล์'}), 400
+    file = request.files['file']
+    if not file or not file.filename:
+        return jsonify({'success': False, 'message': 'ไม่พบชื่อไฟล์'}), 400
+    try:
+        from googleapiclient.http import MediaInMemoryUpload
+        drive = get_drive_service()
+        content = file.read()
+        mime = file.content_type or 'image/jpeg'
+        media = MediaInMemoryUpload(content, mimetype=mime)
+        uploaded = drive.files().create(
+            body={'name': file.filename},
+            media_body=media,
+            fields='id'
+        ).execute()
+        file_id = uploaded['id']
+        drive.permissions().create(
+            fileId=file_id,
+            body={'role': 'reader', 'type': 'anyone'}
+        ).execute()
+        url = f'https://drive.google.com/uc?export=view&id={file_id}'
+        return jsonify({'success': True, 'url': url})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+# ===== Index Settings (logo / wallpaper / featured) =====
+@app.route('/api/index-settings', methods=['GET'])
+def get_index_settings():
+    """Public — อ่านค่าหน้าแรก"""
+    try:
+        ws = get_sheet('index')
+        all_vals = ws.get_all_values()
+
+        logo = ''
+        wallpapers = []
+        featured = []
+
+        if len(all_vals) > 1:
+            row2 = all_vals[1]
+            logo = row2[0].strip() if len(row2) > 0 else ''
+            # wallpapers: column B (idx 1), rows 2+
+            for row in all_vals[1:]:
+                val = row[1].strip() if len(row) > 1 else ''
+                if val:
+                    wallpapers.append(val)
+            # featured: columns C-F (idx 2-5), row 2 only
+            for i in range(2, 6):
+                val = row2[i].strip() if len(row2) > i else ''
+                if val:
+                    featured.append(val)
+
+        return jsonify({'success': True, 'logo': logo, 'wallpapers': wallpapers, 'featured': featured})
+    except Exception as e:
+        return jsonify({'success': True, 'logo': '', 'wallpapers': [], 'featured': [], 'error': str(e)})
+
+@app.route('/api/index-settings', methods=['POST'])
+@login_required
+def save_index_settings():
+    """Admin — บันทึก logo / wallpaper URLs / featured villas"""
+    try:
+        data  = request.json or {}
+        logo  = data.get('logo', '')
+        wps   = data.get('wallpapers', [])
+        feat  = data.get('featured', [])[:4]
+
+        ws = get_sheet('index')
+
+        # Ensure header row exists
+        needed = ['logo', 'wallpaper', 'featured1', 'featured2', 'featured3', 'featured4']
+        headers = ws.row_values(1)
+        for i, h in enumerate(needed, start=1):
+            if len(headers) < i or not headers[i-1]:
+                ws.update_cell(1, i, h)
+
+        # Clear old data rows (2 onwards) up to enough rows
+        all_vals = ws.get_all_values()
+        clear_end = max(len(all_vals), len(wps) + 2, 6)
+        ws.batch_clear([f'A2:F{clear_end}'])
+
+        # Write logo (A2)
+        ws.update_cell(2, 1, logo)
+
+        # Write wallpapers (B2, B3, ...)
+        for i, wp in enumerate(wps):
+            ws.update_cell(i + 2, 2, wp)
+
+        # Write featured (C2..F2)
+        for i, name in enumerate(feat):
+            ws.update_cell(2, 3 + i, name)
+
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+# ===== Promote Email (public — ใช้ใน promotions.html) =====
+@app.route('/api/promote-email', methods=['GET'])
+def get_promote_email():
+    """Public — คืนค่า email จาก login sheet C2"""
+    try:
+        ws = get_sheet('login')
+        col_c = ws.col_values(3)   # column C
+        email = col_c[1].strip() if len(col_c) > 1 else ''
+        return jsonify({'success': True, 'email': email})
+    except Exception as e:
+        return jsonify({'success': False, 'email': '', 'error': str(e)})
+
 if __name__ == '__main__':
     print("=" * 40)
     print("  Monte Villa Admin Server")
